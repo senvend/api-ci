@@ -1,0 +1,36 @@
+# Publishes senvend-api and senvend-api-async to PyPI via trusted publishing.
+#
+# PyPI does not trust our self-managed GitLab as an OIDC issuer, so the upload
+# runs here. release-public.py in senbax/senvend/proto builds the sdists and
+# wheels, attaches them to a release here and waits for this run. This repo
+# exists only to mint the token that PyPI accepts.
+#
+# The trusted publisher on PyPI is registered per project, both pointing at
+# this workflow file - renaming it breaks both policies.
+name: publish-pypi
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # the only reason this repo exists
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the distributions from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --pattern '*.whl' --pattern '*.tar.gz' --dir dist
+          ls -l dist
+
+      # reads dist/ and authenticates with the OIDC token, no api token
+      - name: Push to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
