@@ -1,0 +1,40 @@
+# Publishes Senvend.Api to nuget.org via trusted publishing (OIDC).
+#
+# nuget.org only trusts gitlab.com as an OIDC issuer, so our self-managed
+# GitLab cannot publish keylessly. release-public.py in senbax/senvend/proto
+# builds the .nupkg, attaches it to a release here and waits for this run.
+# This repo exists only to mint the token that nuget.org accepts.
+name: publish-nuget
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # the only reason this repo exists
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the package from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" --pattern '*.nupkg'
+          ls -l ./*.nupkg
+
+      - name: Exchange the OIDC token for a short-lived api key
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push to nuget.org
+        run: |
+          dotnet nuget push ./*.nupkg \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
