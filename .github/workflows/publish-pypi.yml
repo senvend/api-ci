@@ -8,6 +8,9 @@
 # Both projects trust this workflow file - renaming it breaks their trusted
 # publisher.
 #
+# A release body naming no project publishes and verifies nothing: a preview
+# leaves out every project PyPI holds no stable release of yet.
+#
 # A release tagged verify-* (release-public.py check) only exchanges the token,
 # proving PyPI still trusts this workflow before a real release starts. A
 # pending publisher creates its project on its first exchange, so a new project
@@ -56,6 +59,7 @@ jobs:
       # only the files of the projects the release body names: the release
       # also carries the Rust workspace as a .tar.gz
       - name: Download the distributions from the release
+        id: download
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_BODY: ${{ github.event.release.body }}
@@ -66,12 +70,19 @@ jobs:
             prefix="${project//-/_}"
             patterns+=(--pattern "$prefix-*.whl" --pattern "$prefix-*.tar.gz")
           done
+          # without a pattern gh would download every asset of the release
+          if [ "${#patterns[@]}" -eq 0 ]; then
+            echo "The release names no PyPI project, nothing to publish"
+            echo "skip=true" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
           mkdir -p dist
           gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "${patterns[@]}" --dir dist
           ls -l dist
 
       # reads dist/ and authenticates with the OIDC token, no api token
       - name: Push to PyPI
+        if: steps.download.outputs.skip != 'true'
         uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           # a re-run skips what an earlier attempt uploaded
