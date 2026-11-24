@@ -48,9 +48,28 @@ jobs:
         uses: rust-lang/crates-io-auth-action@v1
 
       # --no-verify: the release job already ran `cargo publish --dry-run`
-      # against this exact source during bump
+      # against this exact source during bump. A re-run excludes the crates an
+      # earlier attempt published, which cargo would refuse.
       - name: Publish to crates.io
         working-directory: rust
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
-        run: cargo publish --workspace --no-verify
+        run: |
+          set -euo pipefail
+          exclude=()
+          remaining=0
+          while read -r name version; do
+            if curl -fsS -o /dev/null -A "senvend-api-ci (https://github.com/senvend/api-ci)" \
+              "https://crates.io/api/v1/crates/$name/$version"; then
+              echo "$name $version is on crates.io already"
+              exclude+=(--exclude "$name")
+            else
+              remaining=$((remaining + 1))
+            fi
+          done < <(cargo metadata --no-deps --format-version 1 \
+            | jq -r '.packages[] | select(.publish != []) | "\(.name) \(.version)"')
+          if [ "$remaining" -eq 0 ]; then
+            echo "every crate is on crates.io already"
+            exit 0
+          fi
+          cargo publish --workspace --no-verify "${exclude[@]}"
