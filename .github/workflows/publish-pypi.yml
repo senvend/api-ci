@@ -5,15 +5,13 @@
 # wheels, attaches them to a release here and waits for this run. This repo
 # exists only to mint the token that PyPI accepts.
 #
-# The trusted publisher on PyPI is registered per project, both pointing at
-# this workflow file - renaming it breaks both policies.
+# Both projects trust this workflow file - renaming it breaks their trusted
+# publisher.
 #
 # A release tagged verify-* (release-public.py check) only exchanges the token,
 # proving PyPI still trusts this workflow before a real release starts. A
-# pending publisher creates its project on its first exchange, and one exchange
-# uses up only one of this workflow's pending publishers, so verify exchanges
-# once per project its release body names: afterwards none is pending and the
-# publish token covers every project.
+# pending publisher creates its project on its first exchange, so a new project
+# gets created by a verify rather than by the release.
 name: publish-pypi
 
 on:
