@@ -27,7 +27,7 @@ jobs:
     steps:
       # the action revokes the token again when the job ends
       - name: Exchange the OIDC token for a short-lived crates.io token
-        uses: rust-lang/crates-io-auth-action@v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
 
   push:
     if: ${{ !startsWith(github.event.release.tag_name, 'verify-') }}
@@ -37,15 +37,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "${{ github.event.release.tag_name }}" \
-            --repo "${{ github.repository }}" \
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
             --pattern 'senvend-api-rust-src.tar.gz'
           tar xzf senvend-api-rust-src.tar.gz
           ls -l rust
 
       - name: Exchange the OIDC token for a short-lived crates.io token
         id: auth
-        uses: rust-lang/crates-io-auth-action@v1
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
 
       # --no-verify: the release job already ran `cargo publish --dry-run`
       # against this exact source during bump. A re-run excludes the crates an

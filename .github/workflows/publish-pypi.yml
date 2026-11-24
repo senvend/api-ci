@@ -65,13 +65,12 @@ jobs:
             patterns+=(--pattern "$prefix-*.whl" --pattern "$prefix-*.tar.gz")
           done
           mkdir -p dist
-          gh release download "${{ github.event.release.tag_name }}" \
-            --repo "${{ github.repository }}" "${patterns[@]}" --dir dist
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "${patterns[@]}" --dir dist
           ls -l dist
 
       # reads dist/ and authenticates with the OIDC token, no api token
       - name: Push to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
         with:
           # a re-run skips what an earlier attempt uploaded
           skip-existing: true
