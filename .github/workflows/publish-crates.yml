@@ -7,6 +7,9 @@
 #
 # The trusted publisher is registered per crate on crates.io, all three
 # pointing at this workflow file - renaming it breaks all three policies.
+#
+# A release tagged verify-* (release-public.py check) only exchanges the token,
+# proving crates.io still trusts this workflow before a real release starts.
 name: publish-crates
 
 on:
@@ -18,7 +21,16 @@ permissions:
   id-token: write # the only reason this repo exists
 
 jobs:
+  verify:
+    if: startsWith(github.event.release.tag_name, 'verify-')
+    runs-on: ubuntu-latest
+    steps:
+      # the action revokes the token again when the job ends
+      - name: Exchange the OIDC token for a short-lived crates.io token
+        uses: rust-lang/crates-io-auth-action@v1
+
   push:
+    if: ${{ !startsWith(github.event.release.tag_name, 'verify-') }}
     runs-on: ubuntu-latest
     steps:
       - name: Download the workspace from the release
