@@ -27,25 +27,27 @@ jobs:
     if: startsWith(github.event.release.tag_name, 'verify-')
     runs-on: ubuntu-latest
     steps:
-      - name: Exchange the OIDC token once per project
+      - name: Exchange the OIDC token
         env:
           RELEASE_BODY: ${{ github.event.release.body }}
         run: |
           set -euo pipefail
-          for project in $(jq -r '.pypi_projects[]' <<<"$RELEASE_BODY"); do
-            oidc="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=pypi" | jq -r .value)"
-            echo "::add-mask::$oidc"
-            response="$(curl -sS -X POST https://pypi.org/_/oidc/mint-token \
-              --data "{\"token\": \"$oidc\"}")"
-            token="$(jq -r '.token // empty' <<<"$response")"
-            if [ -z "$token" ]; then
-              echo "PyPI refused the token ($project): $(jq -c '.errors // .' <<<"$response")"
-              exit 1
-            fi
-            echo "::add-mask::$token"
-            echo "PyPI accepted the token ($project)"
-          done
+          if [ "$(jq '.pypi_projects | length' <<<"$RELEASE_BODY")" -eq 0 ]; then
+            echo "The release names no PyPI project, nothing to verify"
+            exit 0
+          fi
+          oidc="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=pypi" | jq -r .value)"
+          echo "::add-mask::$oidc"
+          response="$(curl -sS -X POST https://pypi.org/_/oidc/mint-token \
+            --data "{\"token\": \"$oidc\"}")"
+          token="$(jq -r '.token // empty' <<<"$response")"
+          if [ -z "$token" ]; then
+            echo "PyPI refused the token: $(jq -c '.errors // .' <<<"$response")"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "PyPI accepted the token"
 
   push:
     if: ${{ !startsWith(github.event.release.tag_name, 'verify-') }}
