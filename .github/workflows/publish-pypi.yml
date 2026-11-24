@@ -5,8 +5,13 @@
 # wheels, attaches them to a release here and waits for this run. This repo
 # exists only to mint the token that PyPI accepts.
 #
-# The trusted publisher on PyPI is registered per project, both pointing at
-# this workflow file - renaming it breaks both policies.
+# Both projects trust this workflow file - renaming it breaks their trusted
+# publisher.
+#
+# A release tagged verify-* (release-public.py check) only exchanges the token,
+# proving PyPI still trusts this workflow before a real release starts. A
+# pending publisher creates its project on its first exchange, so a new project
+# gets created by a verify rather than by the release.
 name: publish-pypi
 
 on:
@@ -18,19 +23,56 @@ permissions:
   id-token: write # the only reason this repo exists
 
 jobs:
-  push:
+  verify:
+    if: startsWith(github.event.release.tag_name, 'verify-')
     runs-on: ubuntu-latest
     steps:
+      - name: Exchange the OIDC token
+        env:
+          RELEASE_BODY: ${{ github.event.release.body }}
+        run: |
+          set -euo pipefail
+          if [ "$(jq '.pypi_projects | length' <<<"$RELEASE_BODY")" -eq 0 ]; then
+            echo "The release names no PyPI project, nothing to verify"
+            exit 0
+          fi
+          oidc="$(curl -fsS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=pypi" | jq -r .value)"
+          echo "::add-mask::$oidc"
+          response="$(curl -sS -X POST https://pypi.org/_/oidc/mint-token \
+            --data "{\"token\": \"$oidc\"}")"
+          token="$(jq -r '.token // empty' <<<"$response")"
+          if [ -z "$token" ]; then
+            echo "PyPI refused the token: $(jq -c '.errors // .' <<<"$response")"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "PyPI accepted the token"
+
+  push:
+    if: ${{ !startsWith(github.event.release.tag_name, 'verify-') }}
+    runs-on: ubuntu-latest
+    steps:
+      # only the files of the projects the release body names: the release
+      # also carries the Rust workspace as a .tar.gz
       - name: Download the distributions from the release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_BODY: ${{ github.event.release.body }}
         run: |
+          set -euo pipefail
+          patterns=()
+          for project in $(jq -r '.pypi_projects[]' <<<"$RELEASE_BODY"); do
+            prefix="${project//-/_}"
+            patterns+=(--pattern "$prefix-*.whl" --pattern "$prefix-*.tar.gz")
+          done
           mkdir -p dist
-          gh release download "${{ github.event.release.tag_name }}" \
-            --repo "${{ github.repository }}" \
-            --pattern '*.whl' --pattern '*.tar.gz' --dir dist
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "${patterns[@]}" --dir dist
           ls -l dist
 
       # reads dist/ and authenticates with the OIDC token, no api token
       - name: Push to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+        with:
+          # a re-run skips what an earlier attempt uploaded
+          skip-existing: true

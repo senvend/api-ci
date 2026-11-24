@@ -4,6 +4,9 @@
 # GitLab cannot publish keylessly. release-public.py in senbax/senvend/proto
 # builds the .nupkg, attaches it to a release here and waits for this run.
 # This repo exists only to mint the token that nuget.org accepts.
+#
+# A release tagged verify-* (release-public.py check) only exchanges the token,
+# proving nuget.org still trusts this workflow before a real release starts.
 name: publish-nuget
 
 on:
@@ -15,26 +18,37 @@ permissions:
   id-token: write # the only reason this repo exists
 
 jobs:
+  verify:
+    if: startsWith(github.event.release.tag_name, 'verify-')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Exchange the OIDC token for a short-lived api key
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ vars.NUGET_USER }}
+
   push:
+    if: ${{ !startsWith(github.event.release.tag_name, 'verify-') }}
     runs-on: ubuntu-latest
     steps:
       - name: Download the package from the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "${{ github.event.release.tag_name }}" \
-            --repo "${{ github.repository }}" --pattern '*.nupkg'
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --pattern '*.nupkg'
           ls -l ./*.nupkg
 
       - name: Exchange the OIDC token for a short-lived api key
         id: login
-        uses: NuGet/login@v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         with:
           user: ${{ vars.NUGET_USER }}
 
       - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           dotnet nuget push ./*.nupkg \
-            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate

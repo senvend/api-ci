@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # the actions are pinned to commits, they mint the publish tokens
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
